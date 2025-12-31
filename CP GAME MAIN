@@ -1,13 +1,18 @@
 #include <iostream>
 #include <conio.h>
 #include <windows.h>
+#include <ctime>  // Added for srand
+#include <fstream>  // Added for file operations
+#include <string>   // Added for string handling
 using namespace std;
-const int width = 20;
+
+const int width = 40;
 const int height = 20;
+
 // Direction enum
 enum eDirection { STOP = 0, LEFT, RIGHT, UP, DOWN };
 eDirection dir;
- 
+
 // Game state
 bool gameOver;
 
@@ -20,12 +25,17 @@ struct Snake {
 struct Food {
     int x, y;
 };
- 
+
 Snake snake[100];
 Food food;
 int snakeLength;
 int score;
- 
+int level;  // New: to store the selected level
+int gameSpeed;  // New: to store the speed based on level
+int foodsEaten = 0;  // Track number of foods eaten
+bool isMegaFood = false;  // Flag for mega food
+string playerName;  // New: to store player's name
+
 // Setup function
 void Setup() {
     gameOver = false;
@@ -33,28 +43,38 @@ void Setup() {
     snakeLength = 1;
     snake[0].x = width / 2;
     snake[0].y = height / 2;
+    srand(time(NULL));  // Seed random number generator
     food.x = rand() % (width - 2) + 1;
     food.y = rand() % (height - 2) + 1;
     score = 0;
+    foodsEaten = 0;
+    isMegaFood = false;
+    
+    // Set speed based on level
+    switch (level) {
+    case 1: gameSpeed = 120; break;  // Easy: slower
+    case 2: gameSpeed = 80; break;  // Medium: default
+    case 3: gameSpeed = 50; break;   // Hard: faster
+    }
 }
- 
+
 // Draw game
 void Draw() {
     system("cls");
- 
+
     for (int i = 0; i < width + 2; i++)
         cout << "*";
     cout << endl;
- 
+
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
             if (j == 0)
                 cout << "*";
- 
+
             if (i == snake[0].y && j == snake[0].x)
                 cout << "H"; // head
             else if (i == food.y && j == food.x)
-                cout << "0"; // food
+                cout << (isMegaFood ? "X" : "0"); // mega food as 'X', regular as '0'
             else {
                 bool printTail = false;
                 for (int k = 1; k < snakeLength; k++) {
@@ -67,18 +87,24 @@ void Draw() {
                 if (!printTail)
                     cout << " ";
             }
- 
+
             if (j == width - 1)
                 cout << "*";
         }
         cout << endl;
     }
- 
+
     for (int i = 0; i < width + 2; i++)
         cout << "*";
-    cout << "\nScore: " << score << endl;
+    cout << "\nScore: " << score << " | Level: ";
+    switch (level) {
+    case 1: cout << "Easy"; break;
+    case 2: cout << "Medium"; break;
+    case 3: cout << "Hard"; break;
+    }
+    cout << endl;
 }
- 
+
 // Input
 void Input() {
     if (_kbhit()) {
@@ -91,14 +117,14 @@ void Input() {
         }
     }
 }
- 
+
 // Game logic
 void Logic() {
     // Move tail
     for (int i = snakeLength - 1; i > 0; i--) {
         snake[i] = snake[i - 1];
     }
- 
+
     // Move head
     switch (dir) {
     case LEFT:  snake[0].x--; break;
@@ -107,40 +133,111 @@ void Logic() {
     case DOWN:  snake[0].y++; break;
     default: break;
     }
- 
-    // Wall collision
-    if (snake[0].x < 0 || snake[0].x >= width ||
-        snake[0].y < 0 || snake[0].y >= height) {
-        gameOver = true;
+
+    // Wall collision or wrap-around based on level
+    if (level == 1) {
+        // Easy: wrap around both vertical and horizontal
+        if (snake[0].x < 1) snake[0].x = width - 2;
+        else if (snake[0].x > width - 2) snake[0].x = 1;
+        if (snake[0].y < 1) snake[0].y = height - 2;
+        else if (snake[0].y > height - 2) snake[0].y = 1;
+    } else if (level == 2) {
+        // Medium: wrap around vertical walls only
+        if (snake[0].x < 1) snake[0].x = width - 2;
+        else if (snake[0].x > width - 2) snake[0].x = 1;
+        // Collide with horizontal walls
+        if (snake[0].y <= 0 || snake[0].y >= height - 1) {
+            gameOver = true;
+        }
+    } else { // level 3
+        // Hard: wall collision ends game for both
+        if (snake[0].x <= 0 || snake[0].x >= width - 1 ||
+            snake[0].y <= 0 || snake[0].y >= height - 1) {
+            gameOver = true;
+        }
     }
- 
+
     // Self collision
     for (int i = 1; i < snakeLength; i++) {
         if (snake[0].x == snake[i].x && snake[0].y == snake[i].y) {
             gameOver = true;
         }
     }
- 
+
     // Food collision
     if (snake[0].x == food.x && snake[0].y == food.y) {
-        score += 10;
-        food.x = rand() % (width - 2) + 1;
-        food.y = rand() % (height - 2) + 1;
+        foodsEaten++;
+        if (isMegaFood) {
+            score += 30;  // Mega food worth 3x regular (30 points)
+            isMegaFood = false;
+        } else {
+            score += 10;  // Regular food
+        }
         snakeLength++;
+        
+        // Determine if next food is mega
+        if (foodsEaten % 3 == 0) {
+            isMegaFood = true;
+        }
+        
+        // Generate new food position, ensuring it's not on the snake
+        bool validFood = false;
+        while (!validFood) {
+            food.x = rand() % (width - 2) + 1;
+            food.y = rand() % (height - 2) + 1;
+            validFood = true;
+            for (int i = 0; i < snakeLength; i++) {
+                if (food.x == snake[i].x && food.y == snake[i].y) {
+                    validFood = false;
+                    break;
+                }
+            }
+        }
     }
 }
- 
+
 int main() {
+    // Ask for player's name
+    cout << "Enter your name: ";
+    getline(cin, playerName);  // Use getline to handle spaces in names
+    
+    // Level selection
+    cout << "Select Difficulty Level:" << endl;
+    cout << "1. Easy" << endl;
+    cout << "2. Medium" << endl;
+    cout << "3. Hard" << endl;
+    cout << "Enter your choice (1-3): ";
+    cin >> level;
+    while (level < 1 || level > 3) {
+        cout << "Invalid choice. Enter 1, 2, or 3: ";
+        cin >> level;
+    }
     Setup();
     while (!gameOver) {
         Draw();
         Input();
         Logic();
-        Sleep(100); // speed
+        Sleep(gameSpeed);  // Use dynamic speed
     }
- 
+
     system("cls");
     cout << "Game Over!" << endl;
     cout << "Final Score: " << score << endl;
+    												// Save score to file
+    ofstream scoreFile("scores.txt", ios::app);  // Open in append mode
+    if (scoreFile.is_open()) {
+        string levelName;
+        switch (level) {
+        case 1: levelName = "Easy"; break;
+        case 2: levelName = "Medium"; break;
+        case 3: levelName = "Hard"; break;
+        }
+        scoreFile << "Player: " << playerName << ", Level: " << levelName << ", Score: " << score << endl;
+        scoreFile.close();
+        cout << "Score saved to scores.txt" << endl;
+    } else {
+        cout << "Error: Unable to open scores.txt for writing." << endl;
+    }
+    
     return 0;
 }
